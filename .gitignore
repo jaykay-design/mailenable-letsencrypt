@@ -1,0 +1,4 @@
+/LetsEncrypt/packages
+/LetsEncrypt/bin
+/LetsEncrypt/obj
+/LetsEncrypt/*.user

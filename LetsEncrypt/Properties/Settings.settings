@@ -1,0 +1,48 @@
+﻿<?xml version='1.0' encoding='utf-8'?>
+<SettingsFile xmlns="http://schemas.microsoft.com/VisualStudio/2004/01/settings" CurrentProfile="(Default)" GeneratedClassNamespace="JayKayDesign.MailEnable.LetsEncrypt.Properties" GeneratedClassName="Settings">
+  <Profiles />
+  <Settings>
+    <Setting Name="ValidMailHosts" Type="System.String" Scope="User">
+      <Value Profile="(Default)">smtp,imap,mail,pop,pop3</Value>
+    </Setting>
+    <Setting Name="ServerIP" Type="System.String" Scope="User">
+      <Value Profile="(Default)">add your email server IPhere</Value>
+    </Setting>
+    <Setting Name="WebsitePath" Type="System.String" Scope="User">
+      <Value Profile="(Default)">C:\inetpub\wwwroot\mailenableletsencrypt</Value>
+    </Setting>
+    <Setting Name="MainDomain" Type="System.String" Scope="User">
+      <Value Profile="(Default)">your main MailEnable domain name</Value>
+    </Setting>
+    <Setting Name="StoragePath" Type="System.String" Scope="User">
+      <Value Profile="(Default)">C:\mailenableletsencrypt</Value>
+    </Setting>
+    <Setting Name="Debug" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">False</Value>
+    </Setting>
+    <Setting Name="Email" Type="System.String" Scope="User">
+      <Value Profile="(Default)">The contact email provided to LetEncrypt</Value>
+    </Setting>
+    <Setting Name="RSAKeyBits" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">2048</Value>
+    </Setting>
+    <Setting Name="AdditionalMailHosts" Type="System.String" Scope="User">
+      <Value Profile="(Default)">addional domains not listed in MailEnable (webmail/etc.)</Value>
+    </Setting>
+    <Setting Name="CreateNewWebsite" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">False</Value>
+    </Setting>
+    <Setting Name="ExistingWebsiteName" Type="System.String" Scope="User">
+      <Value Profile="(Default)">MailEnable WebMail</Value>
+    </Setting>
+    <Setting Name="ExistingWebsiteTlsHost" Type="System.String" Scope="User">
+      <Value Profile="(Default)">host name of existing website where certificates are validated (should be the ME webmail domain)</Value>
+    </Setting>
+    <Setting Name="ScheduledTaskName" Type="System.String" Scope="User">
+      <Value Profile="(Default)">LetsEncryptMailEnableRefresh</Value>
+    </Setting>
+    <Setting Name="RefreshIntervalDays" Type="System.Int16" Scope="User">
+      <Value Profile="(Default)">60</Value>
+    </Setting>
+  </Settings>
+</SettingsFile>
