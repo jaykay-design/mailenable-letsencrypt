@@ -114,7 +114,7 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
 
         internal void InstallCertificate(X509Certificate2 cert)
         {
-            string certName = cert.SubjectName.Name;
+            string certName = cert.FriendlyName;
 
             string registryKey = @"HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\Mail Enable\Mail Enable\Security";
             string registryValue = "Default SSL Certificate";
