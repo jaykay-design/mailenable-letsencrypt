@@ -1,21 +1,24 @@
-﻿using Microsoft.Win32;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net;
-using System.Net.Sockets;
-using System.Security.Cryptography.X509Certificates;
-using ME = MailEnable.Administration;
+﻿using ME = MailEnable.Administration;
 
 namespace JayKayDesign.MailEnable.LetsEncrypt
 {
+    using Microsoft.Win32;
+    using NLog;
+    using System;
+    using System.Collections.Generic;
+    using System.Linq;
+    using System.Net;
+    using System.Security.Cryptography.X509Certificates;
+    using System.ServiceProcess;
+
     internal class MailEnable
     {
-        public ILog Logger { get; set; }
+        private List<string> stoppedServices;
+
+        private static Logger logger = LogManager.GetLogger("MailEnable");
 
         public MailEnable()
         {
-
         }
 
         internal string[] GetPostofficeDomainsNames()
@@ -60,14 +63,17 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
                 }
             }
 
-            Logger.Log(LogLevel.Information, string.Format("Found {0} domains. {1}", domainNames.Count, string.Join(", ", domainNames)));
+            logger.Debug("Found {0} domains. {1}", domainNames.Count, string.Join(", ", domainNames));
 
             return domainNames.ToArray();
         }
 
         internal string[] FindHostNames()
         {
-            IPAddress serverIp = new IPAddress(Properties.Settings.Default.ServerIP.Split('.').Select(i => byte.Parse(i)).ToArray());
+            IPAddress serverIp = Properties.Settings.Default.ServerIP == "*" 
+                ? IPAddress.Any 
+                : new IPAddress(Properties.Settings.Default.ServerIP.Split('.').Select(i => byte.Parse(i)).ToArray());
+
             List<string> certificateHosts = new List<string>();
 
             foreach (string postofficeDomain in GetPostofficeDomainsNames())
@@ -80,28 +86,24 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
                     {
                         dnsInfo = Dns.GetHostEntry(mailHost);
                     }
-                    catch (SocketException ex)
-                    {
-                        Logger.Log(LogLevel.Information, "Host " + mailHost + " " + ex.Message);
-                        continue;
-                    }
                     catch (Exception ex)
                     {
-                        Logger.Log(LogLevel.Error, "Host " + mailHost + " " + ex);
+                        logger.Warn("Host {0}: {1}", mailHost, ex.Message);
                         continue;
                     }
 
                     if (dnsInfo.AddressList.Length == 0)
                     {
-                        Logger.Log(LogLevel.Information, "Could not resolve host:" + mailHost);
+                        logger.Warn("Could not resolve host: {0}",mailHost);
                     }
                     else if (!dnsInfo.AddressList.Any(a => a.Equals(serverIp)))
                     {
-                        Logger.Log(LogLevel.Information, "Host " + mailHost + " is not served by " + serverIp.ToString());
+                        logger.Warn("Host {0} is not served by {1}", mailHost,serverIp);
+                        certificateHosts.Add(mailHost);
                     }
                     else
                     {
-                        Logger.Log(LogLevel.Information, "Found valid host:" + mailHost);
+                        logger.Debug("Found valid host: {0}", mailHost);
                         certificateHosts.Add(mailHost);
                     }
                 }
@@ -110,9 +112,9 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
             return certificateHosts.ToArray();
         }
 
-        internal bool InstallCertificate(X509Certificate2 cert)
+        internal void InstallCertificate(X509Certificate2 cert)
         {
-            string certName = cert.GetNameInfo(X509NameType.DnsName, false);
+            string certName = cert.SubjectName.Name;
 
             string registryKey = @"HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\Mail Enable\Mail Enable\Security";
             string registryValue = "Default SSL Certificate";
@@ -120,40 +122,49 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
             string value = (string)Registry.GetValue(registryKey, registryValue, null);
             if (value == null)
             {
-                Logger.Log(LogLevel.Error, "No security section found in Mailenable's registry");
-                return true;
+                Registry.SetValue(registryKey, registryValue, certName);
+                logger.Info("Added SSL binding for Mailenable.");
             }
-            else if ((string)Registry.GetValue(registryKey, "Default SSL Certificate", string.Empty) != certName)
+            else if (value != certName)
             {
-                Registry.SetValue(registryKey, "Default SSL Certificate", certName);
-                Logger.Log(LogLevel.Information, "Added SSL binding for Mailenable.");
+                Registry.SetValue(registryKey, registryValue, certName);
+                logger.Info("Changed SSL binding for Mailenable from {0} to {1}.", value, certName);
             }
-            else {
-                Logger.Log(LogLevel.Information, "SSL binding for Mailenable aready set.");
+            else
+            {
+                logger.Debug("SSL binding for Mailenable already set.");
             }
-
-            return true;
         }
 
         internal void StopServices()
         {
+            stoppedServices = new List<string>();
+
             foreach (string serviceName in new string[] { "MEIMAPS", "MEPOPS", "MESMTPCS", "MEPOPCS" })
             {
                 using (var s = ME.Service.GetServiceControllerIfExists(serviceName))
                 {
-                    s.Stop();
-                    Logger.Log(LogLevel.Information, "Stopping " + s.DisplayName);
+                    if (s != null && s.Status == ServiceControllerStatus.Running)
+                    {
+                        s.Stop();
+                        stoppedServices.Add(serviceName);
+                        logger.Info("Stopping {0}", s.DisplayName);
+                    }
                 }
             }
         }
+
         internal void StartServices()
         {
-            foreach (string serviceName in new string[] { "MEIMAPS", "MEPOPS", "MESMTPCS", "MEPOPCS" })
+            foreach (string serviceName in stoppedServices)
             {
                 using (var s = ME.Service.GetServiceControllerIfExists(serviceName))
                 {
-                    s.Start();
-                    Logger.Log(LogLevel.Information, "Starting " + s.DisplayName);
+                    if (s.Status != ServiceControllerStatus.Running && s.Status != ServiceControllerStatus.StartPending)
+                    {
+                        s.Start();
+                        logger.Info("Starting {0}", s.DisplayName);
+                    }
                 }
             }
         }

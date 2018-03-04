@@ -1,21 +1,26 @@
-﻿using ACMESharp;
-using ACMESharp.ACME;
-using ACMESharp.HTTP;
-using ACMESharp.JOSE;
-using ACMESharp.PKI;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Net;
-using System.Security.Cryptography.X509Certificates;
-using System.Threading;
-
-namespace JayKayDesign.MailEnable.LetsEncrypt
+﻿namespace JayKayDesign.MailEnable.LetsEncrypt
 {
+    using ACMESharp;
+    using ACMESharp.ACME;
+    using ACMESharp.HTTP;
+    using ACMESharp.JOSE;
+    using ACMESharp.PKI;
+    using ACMESharp.PKI.RSA;
+    using NLog;
+    using System;
+    using System.Collections.Generic;
+    using System.IO;
+    using System.Linq;
+    using System.Net;
+    using System.Security.AccessControl;
+    using System.Security.Cryptography;
+    using System.Security.Cryptography.X509Certificates;
+    using System.Security.Principal;
+    using System.Threading;
+
     internal class Certificate
     {
-        internal ILog Logger { get; set; }
+        private static Logger logger = LogManager.GetLogger("Certificate");
 
         private static AcmeClient client;
 
@@ -66,7 +71,7 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
                     var signerPath = Path.Combine(configPath, "Signer");
                     if (File.Exists(signerPath))
                     {
-                        Logger.Log(LogLevel.Information, $"Loading Signer from {signerPath}");
+                        logger.Debug("Loading Signer from {0}", signerPath);
                         using (var signerStream = File.OpenRead(signerPath))
                         {
                             signer.Load(signerStream);
@@ -81,7 +86,7 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
                         var registrationPath = Path.Combine(configPath, "Registration");
                         if (File.Exists(registrationPath))
                         {
-                            Logger.Log(LogLevel.Information, $"Loading Registration from {registrationPath}");
+                            logger.Debug("Loading Registration from {0}", registrationPath);
                             using (var registrationStream = File.OpenRead(registrationPath))
                             {
                                 client.Registration = AcmeRegistration.Load(registrationStream);
@@ -118,16 +123,14 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
             }
             catch (Exception e)
             {
-                var acmeWebException = e as AcmeClient.AcmeWebException;
-                if (acmeWebException != null)
+                if (e is AcmeClient.AcmeWebException acmeWebException)
                 {
-                    Logger.Log(LogLevel.Fatal, acmeWebException.Message);
-                    Logger.Log(LogLevel.Fatal, "ACME Server Returned:");
-                    Logger.Log(LogLevel.Fatal, acmeWebException.Response.ContentAsString);
+                    logger.Fatal(acmeWebException.Message);
+                    logger.Fatal("ACME Server Returned: {0}", acmeWebException.Response.ContentAsString);
                 }
                 else
                 {
-                    Logger.Log(LogLevel.Fatal, e);
+                    logger.Fatal(e);
                 }
 
                 return false;
@@ -138,6 +141,18 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
 
         internal X509Certificate2 InstallCertificate(string certFile)
         {
+            SecurityIdentifier sid;
+            try
+            {
+                sid = (SecurityIdentifier)new NTAccount("IME_SYSTEM").Translate(typeof(SecurityIdentifier));
+            }
+            catch
+            {
+                logger.Fatal("Could not get SID for IME_SYSTEM user.");
+
+                return null;
+            }
+
             X509Store store = new X509Store(StoreName.My, StoreLocation.LocalMachine);
             store.Open(OpenFlags.ReadWrite);
 
@@ -145,14 +160,37 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
             {
                 if (c.GetNameInfo(X509NameType.DnsName, false) == Properties.Settings.Default.MainDomain)
                 {
-                    this.Logger.Log(LogLevel.Information, "Removing old certificate from store");
-                    store.Certificates.Remove(c);
+                    logger.Debug("Removing old certificate from store");
+                    store.Remove(c);
                 }
             }
 
-            X509Certificate2 cert = new X509Certificate2(certFile, "", X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.Exportable | X509KeyStorageFlags.MachineKeySet);
-            cert.FriendlyName = mainDomain;
+            store.Close();
+            store.Open(OpenFlags.ReadWrite);
+
+            X509Certificate2 cert = new X509Certificate2(certFile, "", X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.Exportable | X509KeyStorageFlags.MachineKeySet)
+            {
+                FriendlyName = mainDomain
+            };
+
+            logger.Debug("Adding new certificate to store");
             store.Add(cert);
+
+            RSACryptoServiceProvider certRsa = cert.PrivateKey as RSACryptoServiceProvider;
+
+            var cspParams = new CspParameters(certRsa.CspKeyContainerInfo.ProviderType, certRsa.CspKeyContainerInfo.ProviderName, certRsa.CspKeyContainerInfo.KeyContainerName)
+            {
+                Flags = CspProviderFlags.UseExistingKey | CspProviderFlags.UseMachineKeyStore,
+                CryptoKeySecurity = certRsa.CspKeyContainerInfo.CryptoKeySecurity
+            };
+
+            var rule = new CryptoKeyAccessRule(sid, CryptoKeyRights.GenericRead, AccessControlType.Allow);
+            cspParams.CryptoKeySecurity.AddAccessRule(rule);
+
+            logger.Debug("Granting IME_SYSTEM access to certificate.");
+
+            new RSACryptoServiceProvider(cspParams).Dispose();
+
             store.Close();
 
             return cert;
@@ -160,14 +198,17 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
 
         private List<AuthorizationState> Authorize()
         {
-            List<string> allDomains = new List<string>();
-            allDomains.Add(this.mainDomain);
+            List<string> allDomains = new List<string>
+            {
+                this.mainDomain
+            };
             allDomains.AddRange(this.alternateNames);
 
             List<AuthorizationState> authStatus = new List<AuthorizationState>();
             foreach (var domain in allDomains)
             {
-                Logger.Log(LogLevel.Information, $"\nAuthorizing Identifier {domain} Using Challenge Type {AcmeProtocol.CHALLENGE_TYPE_HTTP}");
+                logger.Debug("Authorizing Identifier {0} Using Challenge Type {1}", domain, AcmeProtocol.CHALLENGE_TYPE_HTTP);
+
                 var authState = client.AuthorizeIdentifier(domain);
                 var challenge = client.DecodeChallenge(authState, AcmeProtocol.CHALLENGE_TYPE_HTTP);
                 var httpChallenge = challenge.Challenge as HttpChallenge;
@@ -180,15 +221,18 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
                 }
                 var answerPath = Path.Combine(this.websitePath, filePath);
 
-                Logger.Log(LogLevel.Information, $" Writing challenge answer to {answerPath}");
+                logger.Debug("Writing challenge answer to {0}", answerPath);
+
                 var directory = Path.GetDirectoryName(answerPath);
                 Directory.CreateDirectory(directory);
                 File.WriteAllText(answerPath, httpChallenge.FileContent);
 
                 var answerUri = new Uri(httpChallenge.FileUrl);
-                Logger.Log(LogLevel.Information, $"Answer should now be browsable at {answerUri}");
 
-                Logger.Log(LogLevel.Information, "Submitting answer");
+                logger.Debug("Answer should now be browsable at {0}", answerUri);
+
+                logger.Debug("Submitting answer");
+
                 authState.Challenges = new AuthorizeChallenge[] { challenge };
                 client.SubmitChallengeAnswer(authState, AcmeProtocol.CHALLENGE_TYPE_HTTP, true);
 
@@ -197,7 +241,7 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
                 int timeout = 10;
                 while (authState.Status == "pending" && timeout > 0)
                 {
-                    Logger.Log(LogLevel.Information, "Refreshing authorization");
+                    logger.Debug("Refreshing authorization");
                     Thread.Sleep(2000);
                     var newAuthzState = client.RefreshIdentifierAuthorization(authState);
 
@@ -211,19 +255,19 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
 
                 if (timeout == 0)
                 {
-                    Logger.Log(LogLevel.Error, string.Format("Timeout waiting for {0}", domain));
+                    logger.Error("Timeout waiting for {0}", domain);
                     authStatus.Add(authState);
 
                     return authStatus;
                 }
 
-                Logger.Log(LogLevel.Information, $"Authorization Result: {authState.Status}");
+                logger.Debug("Authorization Result: {0}", authState.Status);
 
                 if (authState.Status == "invalid")
                 {
-                    Logger.Log(LogLevel.Error, string.Format("Authorization Failed {0}", authState.Status));
-                    Logger.Log(LogLevel.Error, string.Format("Full Error Details {0}", authState));
-                    Logger.Log(LogLevel.Error, $"The ACME server was probably unable to reach {answerUri}");
+                    logger.Error("Authorization Failed {0}", authState.Status);
+                    logger.Error("Full Error Details {0}", authState);
+                    logger.Error("The ACME server was probably unable to reach {0}", answerUri);
                 }
 
                 authStatus.Add(authState);
@@ -234,9 +278,11 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
 
         private string RequestCertificate()
         {
-            var cp = CertificateProvider.GetProvider();
-            var rsaPkp = new RsaPrivateKeyParams();
-            rsaPkp.NumBits = this.keyLength;
+            var cp = CertificateProvider.GetProvider("BouncyCastle");
+            var rsaPkp = new RsaPrivateKeyParams
+            {
+                NumBits = this.keyLength
+            };
             var rsaKeys = cp.GeneratePrivateKey(rsaPkp);
 
             var csrDetails = new CsrDetails
@@ -258,10 +304,11 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
             }
             var derB64U = JwsHelper.Base64UrlEncode(derRaw);
 
-            Logger.Log(LogLevel.Information, $"\nRequesting Certificate");
+            logger.Debug("Requesting Certificate");
+
             var certRequ = client.RequestCertificate(derB64U);
 
-            Logger.Log(LogLevel.Information, $" Request Status: {certRequ.StatusCode}");
+            logger.Debug("Request Status: {0}", certRequ.StatusCode);
 
             if (certRequ.StatusCode == System.Net.HttpStatusCode.Created)
             {
@@ -290,7 +337,7 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
                     cp.ExportCsr(csr, EncodingFormat.PEM, fs);
                 }
 
-                Logger.Log(LogLevel.Information, $" Saving Certificate to {crtDerFile}");
+                logger.Info("Saving Certificate to {0}", crtDerFile);
                 using (var file = File.Create(crtDerFile))
                 {
                     certRequ.SaveCertificate(file);
@@ -307,7 +354,7 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
                 // To generate a PKCS#12 (.PFX) file, we need the issuer's public certificate
                 var isuPemFile = GetIssuerCertificate(certRequ, cp);
 
-                Logger.Log(LogLevel.Information, $" Saving Certificate to {crtPfxFile}");
+                logger.Info($"Saving Certificate to {crtPfxFile}");
                 using (FileStream source = new FileStream(isuPemFile, FileMode.Open),
                     target = new FileStream(crtPfxFile, FileMode.Create))
                 {
@@ -318,7 +365,7 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
                     }
                     catch (Exception ex)
                     {
-                        Logger.Log(LogLevel.Error, $"Error exporting archive: {ex.Message.ToString()}");
+                        logger.Error("Error exporting archive: {0}", ex.Message);
                     }
                 }
 
@@ -357,7 +404,7 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
                         if (!File.Exists(cacertDerFile))
                             File.Copy(tmp, cacertDerFile, true);
 
-                        Logger.Log(LogLevel.Information, $" Saving Issuer Certificate to {cacertPemFile}");
+                        logger.Debug($"Saving Issuer Certificate to {cacertPemFile}");
                         if (!File.Exists(cacertPemFile))
                             using (FileStream source = new FileStream(cacertDerFile, FileMode.Open),
                                 target = new FileStream(cacertPemFile, FileMode.Create))

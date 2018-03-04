@@ -1,12 +1,15 @@
-﻿using Microsoft.Win32.TaskScheduler;
-using System;
-using System.Linq;
-using System.Reflection;
-
-namespace JayKayDesign.MailEnable.LetsEncrypt
+﻿namespace JayKayDesign.MailEnable.LetsEncrypt
 {
+    using Microsoft.Win32.TaskScheduler;
+    using NLog;
+    using System;
+    using System.Linq;
+    using System.Reflection;
+
     internal static class Schedule
     {
+        private static Logger logger = LogManager.GetLogger("Schedule");
+
         internal static void ScheduleTask(string taskName, short dayIntervall)
         {
             using (TaskService ts = new TaskService())
@@ -14,6 +17,8 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
                 Task task = ts.AllTasks.FirstOrDefault(t => t.Name == taskName);
                 if (task == null)
                 {
+                    logger.Info("Adding scheduled task to renew certificate every {0} days", dayIntervall);
+
                     string appPath = Assembly.GetExecutingAssembly().CodeBase.Replace("file:///", string.Empty).Replace("/", "\\");
 
                     TaskDefinition td = ts.NewTask();
@@ -33,6 +38,8 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
                 }
                 else
                 {
+                    logger.Debug("Updating scheduled task to renew certificate every {0} days", dayIntervall);
+
                     task.Definition.Triggers.First().StartBoundary = DateTime.Now.AddDays(dayIntervall);
                     task.RegisterChanges();
                 }

@@ -12,7 +12,7 @@ namespace JayKayDesign.MailEnable.LetsEncrypt.Properties {
     
     
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("Microsoft.VisualStudio.Editors.SettingsDesigner.SettingsSingleFileGenerator", "14.0.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("Microsoft.VisualStudio.Editors.SettingsDesigner.SettingsSingleFileGenerator", "15.5.0.0")]
     internal sealed partial class Settings : global::System.Configuration.ApplicationSettingsBase {
         
         private static Settings defaultInstance = ((Settings)(global::System.Configuration.ApplicationSettingsBase.Synchronized(new Settings())));
@@ -25,7 +25,8 @@ namespace JayKayDesign.MailEnable.LetsEncrypt.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("smtp,imap,mail,pop,pop3")]
+        [global::System.Configuration.DefaultSettingValueAttribute("smtp,imap,mail,pop,pop3 (these subdomains will be checked if they exists for each" +
+            " postoffice domain)")]
         public string ValidMailHosts {
             get {
                 return ((string)(this["ValidMailHosts"]));
@@ -37,7 +38,7 @@ namespace JayKayDesign.MailEnable.LetsEncrypt.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("add your email server IPhere")]
+        [global::System.Configuration.DefaultSettingValueAttribute("add your email server IP here")]
         public string ServerIP {
             get {
                 return ((string)(this["ServerIP"]));
@@ -49,7 +50,8 @@ namespace JayKayDesign.MailEnable.LetsEncrypt.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("C:\\inetpub\\wwwroot\\mailenableletsencrypt")]
+        [global::System.Configuration.DefaultSettingValueAttribute("C:\\inetpub\\wwwroot\\mailenableletsencrypt (The path to the web site whic will rece" +
+            "ive the LetsEncrypt calls)")]
         public string WebsitePath {
             get {
                 return ((string)(this["WebsitePath"]));
@@ -73,7 +75,8 @@ namespace JayKayDesign.MailEnable.LetsEncrypt.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("C:\\mailenableletsencrypt")]
+        [global::System.Configuration.DefaultSettingValueAttribute("C:\\mailenableletsencrypt (the path where the certificate and cofiguration files w" +
+            "ill be stored)")]
         public string StoragePath {
             get {
                 return ((string)(this["StoragePath"]));
@@ -121,7 +124,7 @@ namespace JayKayDesign.MailEnable.LetsEncrypt.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("addional domains not listed in MailEnable (webmail/etc.)")]
+        [global::System.Configuration.DefaultSettingValueAttribute("addional domains not listed in the MailEnable postiffice domains (webmail/etc.)")]
         public string AdditionalMailHosts {
             get {
                 return ((string)(this["AdditionalMailHosts"]));

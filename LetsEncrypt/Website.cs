@@ -1,13 +1,13 @@
-﻿using Microsoft.Web.Administration;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Security.Cryptography.X509Certificates;
-
-namespace JayKayDesign.MailEnable.LetsEncrypt
+﻿namespace JayKayDesign.MailEnable.LetsEncrypt
 {
-    internal class Website: IDisposable
+    using Microsoft.Web.Administration;
+    using NLog;
+    using System.Collections.Generic;
+    using System.IO;
+    using System.Linq;
+    using System.Security.Cryptography.X509Certificates;
+
+    internal class Website
     {
         private string existingWebsiteName;
         private string[] hostNames;
@@ -17,7 +17,6 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
         private string mainDomain;
 
         private bool createNewWebsite;
-
         private long currentWebsiteId;
 
         private readonly string webConfig = @"<?xml version=""1.0"" encoding=""UTF-8""?>
@@ -42,7 +41,8 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
 
 </configuration>";
 
-        internal ILog Logger { get; set; }
+        private static Logger logger = LogManager.GetLogger("Website");
+
         internal string WebsiteRoot { get; private set; }
 
         internal Website(string[] hostNames, string serverIp, string mainDomain, string existingWebsiteName = null, string newWebsitePath = null)
@@ -82,7 +82,7 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
                     site = iisManager.Sites.FirstOrDefault(s => s.Name == this.existingWebsiteName);
                     if (site == null)
                     {
-                        Logger.Log(LogLevel.Fatal, "Could not find website with name " + this.existingWebsiteName);
+                        logger.Fatal("Could not find website with name {0}.", existingWebsiteName);
                         return false;
                     }
 
@@ -93,7 +93,7 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
                 foreach (string host in hostNames.Union(new string[] { mainDomain }).Except(existingBindings.Select(b => b.Host)))
                 {
                     site.Bindings.Add(this.serverIp + ":80:" + host, "http");
-                    Logger.Log(LogLevel.Information, string.Format("Adding host {0} to website {1}", host, site.Name));
+                    logger.Debug("Adding host {0} to website {1}", host, site.Name);
                 }
 
                 iisManager.CommitChanges();
@@ -117,7 +117,7 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
 
         internal void Remove()
         {
-            if(existingBindings == null)
+            if (existingBindings == null)
             {
                 return;
             }
@@ -135,7 +135,8 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
 
                     pathToDelete = this.WebsiteRoot;
                 }
-                else {
+                else
+                {
 
                     Site existingWebsite = iisManager.Sites.FirstOrDefault(s => s.Name == this.existingWebsiteName);
 
@@ -144,7 +145,7 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
                         foreach (Binding binding in existingWebsite.Bindings.Where(b => !existingBindings.Any(eb => eb.Host == b.Host)).ToList())
                         {
                             existingWebsite.Bindings.Remove(binding);
-                            Logger.Log(LogLevel.Information, string.Format("Removing host {0} from website {1}", binding.Host, existingWebsite.Name));
+                            logger.Debug("Removing host {0} from website {1}", binding.Host, existingWebsite.Name);
                         }
                     }
 
@@ -166,13 +167,8 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
             currentWebsiteId = 0;
         }
 
-        internal bool InstallCertificate(X509Certificate2 cert, string httpsHostName)
+        internal void InstallCertificate(X509Certificate2 cert, string httpsHostName)
         {
-            if (createNewWebsite)
-            {
-                return true;
-            }
-
             using (ServerManager iisManager = new ServerManager())
             {
                 Site currentWebsite = iisManager.Sites.First(s => s.Id == currentWebsiteId);
@@ -180,25 +176,15 @@ namespace JayKayDesign.MailEnable.LetsEncrypt
                 Binding httpsBinding = currentWebsite.Bindings.FirstOrDefault(b => b.Protocol == "https" && b.Host == httpsHostName);
                 if (httpsBinding != null)
                 {
-                    this.Logger.Log(LogLevel.Information, "Removing old SSL binding from website");
+                    logger.Info("Removing old SSL binding from MailEnable website");
                     currentWebsite.Bindings.Remove(httpsBinding);
                 }
 
-                this.Logger.Log(LogLevel.Information, "Adding new SSL binding to website");
-                currentWebsite.Bindings.Add(this.serverIp + ":443:" + httpsHostName, cert.GetCertHash(), "My");
+                logger.Info("Adding new SSL binding to MailEnable website");
+
+                currentWebsite.Bindings.Add($"{serverIp}:443:{httpsHostName}", cert.GetCertHash(), "My");
 
                 iisManager.CommitChanges();
-            }
-
-            return true;
-        }
-
-        public void Dispose()
-        {
-            if (this.currentWebsiteId != 0)
-            {
-                Remove();
-                this.currentWebsiteId  = 0;
             }
         }
     }
